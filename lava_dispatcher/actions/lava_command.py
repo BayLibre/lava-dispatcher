@@ -33,6 +33,7 @@ from lava_dispatcher.test_data import create_attachment
 from lava_dispatcher.utils import read_content
 from datetime import datetime
 
+from lava_dispatcher.actions import lava_test_shell
 
 class cmd_lava_command_run(BaseAction):
 
@@ -54,9 +55,11 @@ class cmd_lava_command_run(BaseAction):
     _parser = None
     _fixupdict = {}
     _results_from_log_file = []
+    _cur_record = None
 
     def run(self, commands, parser=None, iterations=1, fixupdict=None, timeout=-1):
         target = self.client.target_device
+        context = self.context
         log_dir = tempfile.mkdtemp(dir=target.scratch_dir)
         self._logfile = os.path.join(log_dir, 'stdout.log')
         if parser is not None:
@@ -64,6 +67,15 @@ class cmd_lava_command_run(BaseAction):
         if fixupdict is not None:
             self._fixupdict = fixupdict
         logging.info("lava_command logfile: %s" % self._logfile)
+
+        #if there is a host-side hook to call:
+        host_enter_hook = context.device_config.host_hook_enter_command
+        if host_enter_hook:
+             self._cur_record = os.path.join(log_dir, str(host_enter_hook.split(" ")[0] + '.dat'))
+             host_enter_hook = host_enter_hook.rstrip('&') + " " + self._cur_record + " &"
+             logging.warning('Running enter hook on host %s' % host_enter_hook)
+             context.run_command(host_enter_hook)
+
         with self.client.tester_session() as session:
             for count in range(iterations):
                 logging.info("Executing lava_command_run iteration: %s" % count)
@@ -80,6 +92,20 @@ class cmd_lava_command_run(BaseAction):
                         res['result'] = 'fail'
                         self._results_from_log_file.append(res)
                         logging.error(e)
+
+        #if there is a host-side hook to call:
+        host_exit_hook = context.device_config.host_hook_exit_command
+        if host_exit_hook:
+             host_exit_hook = host_exit_hook.rstrip('&') + " " + self._cur_record + " &"
+             logging.warning('Running EXIT hook on dispatcher host %s' % host_exit_hook)
+             output = context.run_command_get_output(host_exit_hook)
+             logging.info(output)
+             # FIXME: Add hook output as a measurement
+             res = {}
+             res['test_case_id'] = str("Host Hook: '%s'" % host_enter_hook.split(" ")[0])
+             res['result'] = 'pass'
+             res['measurement'] = output
+             self._results_from_log_file.append(res)
 
         bundle = self._get_bundle()
         self._write_results_bundle(bundle)
@@ -126,7 +152,12 @@ class cmd_lava_command_run(BaseAction):
 
     def _get_test_runs(self):
         now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-        attachment = [create_attachment(os.path.basename(self._logfile), read_content(self._logfile))]
+        attachment_dir = os.path.dirname(self._logfile)
+        attachment = lava_test_shell._attachments_from_dir(os.path.dirname(self._logfile))
+        # fixup default mimetypes, for stdout.log mainly
+	for entry in attachment:
+            if entry['pathname'].endswith(".log"):
+               entry['mime_type'] = "text/plain"
         results = self._get_test_results()
         return {
             'test_id': 'lava-command',
