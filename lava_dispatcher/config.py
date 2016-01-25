@@ -29,6 +29,11 @@ from configglue import parser, schema
 
 
 class DeviceSchema(schema.Schema):
+
+    # Host-side hook for lava_command_run
+    host_hook_enter_command = schema.StringOption()
+    host_hook_exit_command = schema.StringOption()
+
     master_testboot_dir = schema.StringOption()
     master_testboot_label = schema.StringOption()
     master_testrootfs_dir = schema.StringOption()
