@@ -739,7 +739,7 @@ class Target(object):
             self.context.selinux = '--selinux'
         else:
             self.context.selinux = ''
-        runner.run('wget %s -O - %s %s | /bin/tar %s -C %s -xmf -'
+        runner.run('wget %s -O - %s %s | /bin/tar %s -C %s -xf -'
                    % (wget_options, tar_url, decompression_cmd, self.context.selinux, dest),
                    timeout=timeout)
 
@@ -825,7 +825,8 @@ class Target(object):
 
             parent_dir, target_name = os.path.split(targetdir)
 
-            runner.run('/bin/tar -cmzf /tmp/fs.tgz -C %s %s'
+# MARC            runner.run('/bin/tar -cmzf /tmp/fs.tgz -C %s %s'
+            runner.run('/bin/tar -c -C %s %s | /bin/gzip > /tmp/fs.tgz'
                        % (parent_dir, target_name))
             runner.run('cd /tmp')  # need to be in same dir as fs.tgz
 
